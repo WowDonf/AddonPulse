@@ -29,8 +29,10 @@ by name, and pick exactly the columns you want:
 
 Two status dots flag trouble at a glance: **orange** = memory climbing like a
 leak, **red** = it spiked over 10 ms in a frame. Click a row to pin it to a
-**detail graph** that plots its history, marks combat / pulls / deaths, and puts
-a red tick on every frame it stuttered.
+**detail graph** that plots its history over a live **FPS line**, puts a red tick
+on every frame it stuttered, and lays combat / pull / death events out as shapes
+in a lane below the plot — hover the lane for a time-sorted list, so a cluster of
+events around the same moment stays readable.
 
 ## Sessions — recorded and reload-proof
 
@@ -38,10 +40,12 @@ AddonPulse keeps sampling **while it's closed or minimised**, and snapshots ever
 **fight** (named after the boss, tagged with difficulty and **Kill / Wipe**) and
 every **whole dungeon or raid** (Mythic+ runs show their **key level**). Each
 session also records the **frame rate** over time, overlaid on the graph, so you
-can see an addon's CPU spike line up with the real FPS dip. Close the window
-before a pull, open it afterward — even after the post-key reload — and review
-the full timeline on the **Sessions** tab. Old sessions rotate out automatically
-so your saved data never balloons.
+can see an addon's CPU spike line up with the real FPS dip. It even records the
+**addon-comms traffic** that flowed during the session — the footer shows the
+total, and the session picker lists the top prefixes. Close the window before a
+pull, open it afterward — even after the post-key reload — and review the full
+timeline on the **Sessions** tab. Old sessions rotate out automatically so your
+saved data never balloons.
 
 ## Find a memory leak
 
