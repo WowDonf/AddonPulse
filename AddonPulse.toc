@@ -3,6 +3,8 @@
 ## Notes: Live per-addon CPU & memory monitor — sortable table, history graphs, leak & spike detection, per-fight and per-dungeon session recording, comms tracking, and a minimisable stats bar.
 ## Author: WowDonf
 ## Version: v0.10.0
+## X-Curse-Project-ID: 1593823
+## X-Wago-ID: rNkyXjKa
 ## SavedVariables: AddonPulseDB
 ## SavedVariablesPerCharacter: AddonPulseCharDB
 ## IconTexture: Interface\AddOns\AddonPulse\Icon.png
