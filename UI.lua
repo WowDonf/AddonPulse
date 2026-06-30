@@ -1008,6 +1008,7 @@ function Refresh()
             -- no combat markers on the comms graph
         else
             sel = ns.db.selected and ns.byName[ns.db.selected] or nil
+            fpsSeries = ns.fpsHist          -- overlay the live FPS history
             if sel and ns.markers and #ns.markers > 0 and ns.db.markerMode ~= "off" then
                 local series = (ns.db.metric == "mem") and sel.memHist or sel.cpuHist
                 local n = series and #series or 0

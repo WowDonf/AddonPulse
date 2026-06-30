@@ -342,6 +342,7 @@ function ns.API.ResetCPU()
         wipe(e.cpuHist)
         wipe(e.memHist)
     end
+    wipe(ns.fpsHist)
     ns.sampleCount = 0
 end
 
@@ -474,6 +475,7 @@ function ns.API.Sample(dt)
 
     ns.totalMem = totalMem
     ns.totalCPU = hasAP and Prof.Overall("recent") or totalCPU
+    Push(ns.fpsHist, (GetFramerate and GetFramerate()) or 0, histLen)
 end
 
 -- ---------------------------------------------------------------------------
@@ -491,6 +493,7 @@ ns.run   = nil   -- active instance buffer
 
 ns.markers = {}          -- rolling event markers for the live graph
 ns.lastSampleTime = 0     -- GetTime() of the most recent sample (anchors markers)
+ns.fpsHist = {}          -- live rolling FPS history (overlaid on the Addons graph)
 
 local FIGHT_CAP    = 160    -- working-buffer cap (halve, averaging pairs, beyond this)
 local STORE_FIGHT  = 100    -- stored series cap for fights

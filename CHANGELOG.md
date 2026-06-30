@@ -6,9 +6,10 @@
   **difficulty** (N / H / M / LFR) and **Kill / Wipe** result; dungeon runs get
   their **Mythic+ key level** (and affixes). Shown in the session dropdown and
   footer, so "Boss X" becomes "Boss X — M · Kill" and a run becomes "+18".
-- **FPS timeline on sessions.** Every session records the **frame rate** over
-  time and its avg / min (in the footer), and the session graph overlays a faint
-  green FPS line — so you can see an addon's CPU spike line up with the actual
+- **FPS overlay on every graph.** Sessions record the **frame rate** over time
+  (avg / min in the footer), and the **live Addons graph** keeps a rolling FPS
+  history too — both overlay a faint green FPS line, and the hover readout reports
+  the FPS at that point, so you can line an addon's CPU spike up with the actual
   frame-rate dip.
 
 - **Per-character sessions & baseline.** Recorded fights/runs, the in-progress

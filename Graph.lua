@@ -224,30 +224,31 @@ function ns.Graph.Draw(entry, markers, fps)
     end
     g.title:SetText(("|cffffffff%s|r  •  %s"):format(entry.name or entry.prefix, unit))
 
+    local s
     if comms then
-        g.stats:SetText(format(
+        s = format(
             "in |cffffffff%s|r · out |cffffffff%s|r · rate |cffffffff%s/s|r · peak |cffffffff%s/s|r",
             ns.FmtBytes(entry.bytesIn or 0), ns.FmtBytes(entry.bytesOut or 0),
-            ns.FmtBytes(entry.rate or 0), ns.FmtBytes(entry.peakRate or 0)))
+            ns.FmtBytes(entry.rate or 0), ns.FmtBytes(entry.peakRate or 0))
     elseif entry.isSession then
-        local s = format(
+        s = format(
             "%s |cffffffff%s|r · cpu peak |cffffffff%s|r avg |cffffffff%s|r%s · mem peak |cffffffff%s|r",
             entry.kind or "fight", FmtDur(entry.sessionDur),
             ns.FmtCPUDisplay(entry.cpuPeak), ns.FmtCPUDisplay(entry.cpuSession), ns.CPUUnit(), ns.FmtMem(entry.memPeak))
-        if fps and #fps >= 2 then s = s .. "  ·  |cff8fd98ffps overlay|r" end
-        g.stats:SetText(s)
     elseif native then
         local o50  = ns.Prof.AddOn(entry.name, "over50")    -- not sampled per tick
         local o100 = ns.Prof.AddOn(entry.name, "over100")
-        g.stats:SetText(format(
+        s = format(
             "recent |cffffffff%s|r · peak |cffffffff%s|r · session |cffffffff%s|r · enc |cffffffff%s|r%s · spikes >10/50/100ms |cffffffff%d/%d/%d|r",
             ns.FmtCPUDisplay(entry.cpuRecent), ns.FmtCPUDisplay(entry.cpuPeak), ns.FmtCPUDisplay(entry.cpuSession),
-            ns.FmtCPUDisplay(entry.cpuEncounter), ns.CPUUnit(), entry.over10 or 0, o50, o100))
+            ns.FmtCPUDisplay(entry.cpuEncounter), ns.CPUUnit(), entry.over10 or 0, o50, o100)
     else
         local _, mx, av = ns.HistStats(entry.memHist)
-        g.stats:SetText(format("memory peak |cffffffff%s|r · avg |cffffffff%s|r%s",
-            ns.FmtMem(mx), ns.FmtMem(av), entry.leaking and " · |cffffa030leak?|r" or ""))
+        s = format("memory peak |cffffffff%s|r · avg |cffffffff%s|r%s",
+            ns.FmtMem(mx), ns.FmtMem(av), entry.leaking and " · |cffffa030leak?|r" or "")
     end
+    if fps and #fps >= 2 and not comms then s = s .. "  ·  |cff8fd98ffps overlay|r" end
+    g.stats:SetText(s)
 
     local n = hist and #hist or 0
     if n < 2 then

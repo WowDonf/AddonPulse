@@ -64,8 +64,10 @@ The graph is **annotated**: coloured vertical lines mark **combat start/end**
 (yellow / grey), **boss pulls** (red) and **deaths** (white); **red ticks along
 the top** mark each interval the addon had a **frame over 50 ms** (so you see
 *when* it stuttered, which the averaged line hides); and **hovering** the plot
-shows a crosshair with the exact value, the time at that point, and the nearest
-event. Markers are stored with saved sessions too. The strip below the
+shows a crosshair with the exact value (plus the **FPS** at that moment), the
+time at that point, and the nearest event. A faint green **FPS line** is overlaid
+on the graph, so you can line an addon's CPU spike up against the frame-rate dip.
+Markers are stored with saved sessions too. The strip below the
 graph cycles markers **all → pulls + deaths → off** (to cut clutter on long
 runs) and shows the graph's time window (e.g. `Last 3m00s`, or the session
 length).
