@@ -12,6 +12,8 @@ fight — and every whole dungeon/raid — so you can close the window during a
 pull and open it afterwards (even after a reload) to review on the **Sessions**
 tab.
 
+![The Addons tab](assets/screenshots/Addons.png)
+
 ## Tabs
 
 AddonPulse has three tabs that share one table:
@@ -76,6 +78,8 @@ length).
 
 ### Sessions
 
+![The Sessions tab](assets/screenshots/Sessions.png)
+
 Saved snapshots of past **fights** and **runs**. Pick one from the **dropdown**
 at the top (newest first) — it shows each session's name, duration and how long
 ago it was, and is **searchable** by name (handy for jumping to a specific boss):
@@ -109,6 +113,8 @@ each with its full timeline and **spike ticks**, so every row has a graph. An
 instance**, so reloading mid-key doesn't lose it.
 
 ### Comms
+
+![The Comms tab](assets/screenshots/Comms.png)
 
 Per-prefix addon-message traffic, captured from `SendAddonMessage` and
 `CHAT_MSG_ADDON`. Columns: **In / Out** (total bytes), **Rate** (current
@@ -146,6 +152,8 @@ prefixes registered on your client; outgoing is always counted. Bytes are
   bar works as a compact monitor on its own.
 - **Move / resize:** drag the title bar to move, drag the bottom-right grip to
   resize. Position, size, tab and all view settings are saved.
+
+![Minimised to a compact stats bar](assets/screenshots/Minimized.png)
 
 ## Recording
 
@@ -230,6 +238,9 @@ while the bar is visible.
 The **cog menu → Options...**, `/pulse options`, or **Game Menu → Options →
 AddOns → AddonPulse** opens a panel for everything with a default, with a
 **Reset to Defaults** button:
+
+<img src="assets/screenshots/Options.png" alt="The options window" width="340">
+
 
 | Setting | What it does |
 | --- | --- |
