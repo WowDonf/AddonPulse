@@ -1677,7 +1677,7 @@ function ns.UI.Init()
             self.fs:SetTextColor(1, 1, 1)
             local desc = HeaderDesc(ns.db.tab, self.key)
             if desc then
-                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:AddLine(desc, 0.9, 0.9, 0.9, true)
                 GameTooltip:AddLine("Click to sort.", 0.5, 0.7, 1)
                 GameTooltip:Show()
