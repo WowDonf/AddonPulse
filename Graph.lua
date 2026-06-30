@@ -28,6 +28,7 @@ end
 
 local INSET   = 6     -- plot inset from the panel edge
 local TOP_PAD = 32    -- room for the title + stats rows above the plot
+local LANE_H  = 14    -- event-icon lane reserved below the plot (0 when no events)
 
 local MARKER = {
     combat    = { 1.00, 0.85, 0.20 },   -- combat start
@@ -93,6 +94,36 @@ local function HoverUpdate(self)
         vtxt, ftxt, ttxt, near and ("  |cffffd479" .. near .. "|r") or ""))
 end
 
+-- Hovering the event lane lists every event on the timeline (sorted by time) so
+-- a cluster of markers around the same moment is readable as a list.
+local function LaneTooltip(self)
+    local plot = ns.graphFrame and ns.graphFrame.plot
+    if not plot or not plot.markers then return end
+    local ms = {}
+    for i = 1, #plot.markers do
+        local m = plot.markers[i]
+        if m.x >= 0 and m.x <= 1 then ms[#ms + 1] = m end
+    end
+    if #ms == 0 then return end
+    table.sort(ms, function(a, b) return a.x < b.x end)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine("Timeline events", 1, 1, 1)
+    for i = 1, #ms do
+        local m = ms[i]
+        local t
+        if plot.isSession then
+            local tin = m.x * (plot.duration or 0)
+            t = ("%d:%02d"):format(floor(tin / 60), floor(tin) % 60)
+        else
+            local ago = (1 - m.x) * (plot.span or 0)
+            t = (ago < 1) and "now" or ("-%ds"):format(floor(ago))
+        end
+        local cr, cg, cb = MarkerColor(m.kind)
+        GameTooltip:AddDoubleLine(m.label or m.kind, t, cr, cg, cb, 0.75, 0.75, 0.75)
+    end
+    GameTooltip:Show()
+end
+
 -- ---------------------------------------------------------------------------
 -- Build the panel. `parent` is the main window; the returned frame is anchored
 -- by the UI layout code.
@@ -145,6 +176,16 @@ function ns.Graph.Create(parent)
     g.dots   = {}   -- pooled spike-annotation dots
     g.fps2   = {}   -- pooled FPS-overlay Line objects (sessions)
 
+    -- Event lane below the plot: a distinct shape per event kind + a hover list.
+    -- ic = primary shape texture; ic2 = the second bar of the death "X".
+    g.lane = CreateFrame("Frame", nil, g)
+    g.lane:EnableMouse(true)
+    g.lane.ic  = {}
+    g.lane.ic2 = {}
+    g.lane:SetScript("OnEnter", LaneTooltip)
+    g.lane:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    g.lane:Hide()
+
     g:EnableMouse(true)
     g:SetScript("OnEnter", function(self)
         self.peak:Hide(); self.readout:Show()
@@ -170,6 +211,46 @@ local function GetLine(g, i)
     return ln
 end
 
+local RAD45 = 0.7853981634   -- pi/4
+
+-- Configure pooled lane shapes for one event: a distinct geometry per kind so the
+-- meaning survives without colour (death = an X of two crossed bars using ic +
+-- ic2; pull = diamond; combat start = triangle; combat end = square).
+local function ShapeIcon(lane, i, kind, cr, cg, cb, cx, cy)
+    local ic, ic2 = lane.ic[i], lane.ic2[i]
+    if not ic then   -- create the pair together so the two pools stay parallel
+        ic  = lane:CreateTexture(nil, "OVERLAY"); lane.ic[i]  = ic
+        ic2 = lane:CreateTexture(nil, "OVERLAY"); lane.ic2[i] = ic2
+    end
+    ic:ClearAllPoints()
+    ic:SetTexCoord(0, 1, 0, 1)
+    ic:SetVertexColor(1, 1, 1)
+    if ic.SetVertexOffset then                      -- clear any prior triangle warp
+        ic:SetVertexOffset(1, 0, 0); ic:SetVertexOffset(2, 0, 0)
+        ic:SetVertexOffset(3, 0, 0); ic:SetVertexOffset(4, 0, 0)
+    end
+    if kind == "death" then                         -- white X: two crossed bars
+        ic:SetColorTexture(cr, cg, cb, 0.95);  ic:SetSize(9, 2.4);  ic:SetRotation(RAD45)
+        ic:SetPoint("CENTER", lane, "LEFT", cx, cy); ic:Show()
+        ic2:SetColorTexture(cr, cg, cb, 0.95); ic2:SetSize(9, 2.4); ic2:SetRotation(-RAD45)
+        ic2:ClearAllPoints(); ic2:SetPoint("CENTER", lane, "LEFT", cx, cy); ic2:Show()
+        return
+    end
+    ic2:Hide()
+    if kind == "pull" then                          -- diamond (rotated square)
+        ic:SetColorTexture(cr, cg, cb, 0.95); ic:SetSize(8, 8); ic:SetRotation(RAD45)
+    elseif kind == "combat" then                    -- filled up-triangle
+        ic:SetColorTexture(cr, cg, cb, 0.95); ic:SetSize(11, 9); ic:SetRotation(0)
+        if ic.SetVertexOffset then                  -- collapse the top edge to an apex
+            ic:SetVertexOffset(1, 5.5, 0)           -- upper-left  -> top centre
+            ic:SetVertexOffset(3, -5.5, 0)          -- upper-right -> top centre
+        end
+    else                                            -- square (combat end / default)
+        ic:SetColorTexture(cr, cg, cb, 0.95); ic:SetSize(8, 8); ic:SetRotation(0)
+    end
+    ic:SetPoint("CENTER", lane, "LEFT", cx, cy); ic:Show()
+end
+
 -- ---------------------------------------------------------------------------
 -- Redraw for the given entry. `markers` is an optional array of
 -- { x = 0..1, kind, label } to annotate the timeline.
@@ -184,14 +265,18 @@ function ns.Graph.Draw(entry, markers, fps)
     local hist = comms and entry.bytesHist
               or (entry and (metric == "mem" and entry.memHist or entry.cpuHist))
 
-    local w = g:GetWidth()  - INSET * 2
-    local h = g:GetHeight() - INSET - TOP_PAD
+    local w = g:GetWidth() - INSET * 2
+    -- Reserve a lane below the plot for event icons, but only when there are
+    -- events (comms / event-less graphs keep the full height).
+    local laneH = (markers and #markers > 0) and LANE_H or 0
+    local by = INSET + laneH                      -- plot bottom (lane sits below it)
+    local h = g:GetHeight() - by - TOP_PAD
     g.baseline:ClearAllPoints()
-    g.baseline:SetPoint("BOTTOMLEFT",  g, INSET, INSET)
-    g.baseline:SetPoint("BOTTOMRIGHT", g, -INSET, INSET)
+    g.baseline:SetPoint("BOTTOMLEFT",  g, INSET, by)
+    g.baseline:SetPoint("BOTTOMRIGHT", g, -INSET, by)
     g.midline:ClearAllPoints()
-    g.midline:SetPoint("BOTTOMLEFT",  g, INSET, INSET + h / 2)
-    g.midline:SetPoint("BOTTOMRIGHT", g, -INSET, INSET + h / 2)
+    g.midline:SetPoint("BOTTOMLEFT",  g, INSET, by + h / 2)
+    g.midline:SetPoint("BOTTOMRIGHT", g, -INSET, by + h / 2)
 
     local function clearPlot()
         g.plot = nil
@@ -199,6 +284,9 @@ function ns.Graph.Draw(entry, markers, fps)
         for i = 1, #g.mlines do g.mlines[i]:Hide() end
         for i = 1, #g.dots do g.dots[i]:Hide() end
         for i = 1, #g.fps2 do g.fps2[i]:Hide() end
+        for i = 1, #g.lane.ic  do g.lane.ic[i]:Hide()  end
+        for i = 1, #g.lane.ic2 do g.lane.ic2[i]:Hide() end
+        g.lane:Hide()
         g.cross:Hide()
     end
 
@@ -296,32 +384,58 @@ function ns.Graph.Draw(entry, markers, fps)
     local function py(v)
         local t = (v - base) / range
         if t < 0 then t = 0 elseif t > 1 then t = 1 end
-        return INSET + t * h
+        return by + t * h
     end
 
-    -- Event markers (behind the series).
-    local mi = 0
+    -- Events: a faint vertical guide on the plot (so a spike can be tied to a
+    -- pull/death) plus a clear color-coded icon in the lane below, staggered into
+    -- two rows when crowded. Hover the lane for the full sorted list.
+    g.lane:ClearAllPoints()
+    if laneH > 0 then
+        g.lane:SetPoint("BOTTOMLEFT",  g, INSET, INSET)
+        g.lane:SetPoint("BOTTOMRIGHT", g, -INSET, INSET)
+        g.lane:SetHeight(laneH)
+        g.lane:Show()
+    else
+        g.lane:Hide()
+    end
+
+    local sm = {}
     if markers then
         for k = 1, #markers do
             local m = markers[k]
-            if m.x >= 0 and m.x <= 1 then
-                mi = mi + 1
-                local ln = g.mlines[mi]
-                if not ln then
-                    ln = g:CreateLine(nil, "BORDER")
-                    ln:SetThickness(1.5)
-                    g.mlines[mi] = ln
-                end
-                local cr, cg, cb = MarkerColor(m.kind)
-                ln:SetColorTexture(cr, cg, cb, 0.55)
-                local mxp = INSET + m.x * w
-                ln:SetStartPoint("BOTTOMLEFT", g, mxp, INSET)
-                ln:SetEndPoint("BOTTOMLEFT",   g, mxp, INSET + h)
-                ln:Show()
-            end
+            if m.x >= 0 and m.x <= 1 then sm[#sm + 1] = m end
+        end
+        table.sort(sm, function(p, q) return p.x < q.x end)
+    end
+    local mi, li, lastX, lastRow = 0, 0, -1, 1
+    for k = 1, #sm do
+        local m = sm[k]
+        local cr, cg, cb = MarkerColor(m.kind)
+        local mxp = INSET + m.x * w
+        mi = mi + 1
+        local ln = g.mlines[mi]
+        if not ln then
+            ln = g:CreateLine(nil, "BORDER")
+            ln:SetThickness(1)
+            g.mlines[mi] = ln
+        end
+        ln:SetColorTexture(cr, cg, cb, 0.28)
+        ln:SetStartPoint("BOTTOMLEFT", g, mxp, by)
+        ln:SetEndPoint("BOTTOMLEFT",   g, mxp, by + h)
+        ln:Show()
+
+        if laneH > 0 then
+            li = li + 1
+            -- alternate rows when the previous icon is within ~10px
+            local row = ((m.x - lastX) * w < 10) and (1 - lastRow) or 0
+            lastX, lastRow = m.x, row
+            ShapeIcon(g.lane, li, m.kind, cr, cg, cb, m.x * w, (row == 0) and -3 or 3)
         end
     end
     for k = mi + 1, #g.mlines do g.mlines[k]:Hide() end
+    for k = li + 1, #g.lane.ic  do g.lane.ic[k]:Hide()  end
+    for k = li + 1, #g.lane.ic2 do g.lane.ic2[k]:Hide() end
 
     -- The series line.
     local count = 0
@@ -352,8 +466,8 @@ function ns.Graph.Draw(entry, markers, fps)
                 g.fps2[fc] = ln
             end
             ln:SetColorTexture(0.55, 0.85, 0.55, 0.32)
-            ln:SetStartPoint("BOTTOMLEFT", g, INSET + (i - 1) * fstepX, INSET + (fps[i] / fscale) * h)
-            ln:SetEndPoint("BOTTOMLEFT",   g, INSET + i * fstepX,       INSET + (fps[i + 1] / fscale) * h)
+            ln:SetStartPoint("BOTTOMLEFT", g, INSET + (i - 1) * fstepX, by + (fps[i] / fscale) * h)
+            ln:SetEndPoint("BOTTOMLEFT",   g, INSET + i * fstepX,       by + (fps[i + 1] / fscale) * h)
             ln:Show()
         end
     end
@@ -378,7 +492,7 @@ function ns.Graph.Draw(entry, markers, fps)
                 end
                 dot:SetColorTexture(1, 0.30, 0.30, 0.95)
                 dot:ClearAllPoints()
-                dot:SetPoint("CENTER", g, "BOTTOMLEFT", px(k), INSET + h - 2)
+                dot:SetPoint("CENTER", g, "BOTTOMLEFT", px(k), by + h - 2)
                 dot:Show()
             end
         end
@@ -388,7 +502,7 @@ function ns.Graph.Draw(entry, markers, fps)
     -- Context for the hover handler.
     g.plot = {
         hist = hist, n = n, metric = metric,
-        x0 = INSET, y0 = INSET, w = w, h = h,
+        x0 = INSET, y0 = by, w = w, h = h,
         isSession = entry.isSession,
         span = span, duration = entry.sessionDur,
         markers = markers,

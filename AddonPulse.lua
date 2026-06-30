@@ -218,13 +218,21 @@ function ns.DeltaColor(kb)
 end
 
 -- ---------------------------------------------------------------------------
--- History ring. Plain ordered array (oldest -> newest); trimming from the
--- front is O(n) but n is tiny (<= history) and this runs at most every 2s.
+-- Rolling history. Plain ordered array (oldest -> newest) so every consumer can
+-- read it by index. Rather than shift the whole array on every push once full
+-- (table.remove(t, 1) is O(n) and this runs for every addon's cpu/mem/spike
+-- buffer each tick), we let it overshoot a little and drop the oldest batch in a
+-- single pass — O(1) amortised. The surplus is just a marginally longer tail;
+-- parallel buffers (cpu/mem/spike, fps) stay length-synced since they share the
+-- cap and push cadence.
 -- ---------------------------------------------------------------------------
 local function Push(hist, value, maxLen)
     hist[#hist + 1] = value
-    while #hist > maxLen do
-        table.remove(hist, 1)
+    local n = #hist
+    if n > maxLen * 1.125 then
+        local drop = n - maxLen
+        for i = 1, maxLen do hist[i] = hist[i + drop] end
+        for i = maxLen + 1, n do hist[i] = nil end
     end
 end
 
@@ -341,6 +349,8 @@ function ns.API.ResetCPU()
         e._cpuPrev, e.primed = nil, false
         wipe(e.cpuHist)
         wipe(e.memHist)
+        wipe(e.spikeHist)
+        e._prevOver50 = nil
     end
     wipe(ns.fpsHist)
     ns.sampleCount = 0
@@ -395,6 +405,9 @@ function ns.API.Sample(dt)
         if UpdateMem then UpdateMem() end
     end
 
+    local wasFull = ns._wasFull   -- was the previous sample full (window on screen)?
+    ns._wasFull = full
+
     -- Adaptive CPU reads: when the table is up, read `recent` (history/total),
     -- `over10` (the spike flag) and `over50` (the graph spike track) always, plus
     -- exactly the profiler metrics the chosen columns ask for.
@@ -415,14 +428,20 @@ function ns.API.Sample(dt)
 
     for i = 1, #ns.addons do
         local e = ns.addons[i]
-        e.loaded = IsAddOnLoaded(e.index) and true or false
+        -- `loaded` is refreshed on ADDON_LOADED (addons only ever load, never
+        -- unload mid-session), so there's no need to poll IsAddOnLoaded per tick.
 
-        -- Memory (KB). memRate is the churn / leak signal, over the mem cadence.
+        -- Memory (KB). memRate is the churn / leak signal: KB per *real* second
+        -- since the previous walk (combat deferral makes the gap uneven, so a
+        -- fixed cadence divisor would be wrong).
         local mem
         if doMem then
             mem = (GetMem and GetMem(e.index)) or 0
-            e.memRate = e.primed and ((mem - e.mem) / (memEvery * dt)) or 0
+            local now = (GetTime and GetTime()) or 0
+            local span = e._memT and (now - e._memT) or 0
+            e.memRate = (e.primed and span > 0) and ((mem - e.mem) / span) or 0
             e.mem = mem
+            e._memT = now
             e.primed = true
         else
             mem = e.mem or 0
@@ -460,10 +479,15 @@ function ns.API.Sample(dt)
         Push(e.memHist, mem, histLen)
         Push(e.cpuHist, e.cpuRecent, histLen)
         -- New >50 ms frames since the last full sample (0 when not on screen).
+        -- On the first full sample after the window was closed, just re-baseline:
+        -- over50 is cumulative since login, so the backlog accumulated while closed
+        -- would otherwise render as one huge false spike on the live graph.
         local sd = 0
         if full and hasAP then
-            sd = (e.over50 or 0) - (e._prevOver50 or e.over50 or 0)
-            if sd < 0 then sd = 0 end
+            if wasFull then
+                sd = (e.over50 or 0) - (e._prevOver50 or e.over50 or 0)
+                if sd < 0 then sd = 0 end
+            end
             e._prevOver50 = e.over50
         end
         Push(e.spikeHist, sd, histLen)
@@ -629,6 +653,9 @@ local function Finalize(buf, kind)
         if not fmin or v < fmin then fmin = v end
     end
 
+    -- Addon comms that flowed during the session (total + top prefixes).
+    local cd = (buf.commsBase and ns.Comms and ns.Comms.Delta) and ns.Comms.Delta(buf.commsBase) or nil
+
     return {
         kind = kind,
         name = buf.name or (kind == "run" and "Instance" or "Combat"),
@@ -643,6 +670,9 @@ local function Finalize(buf, kind)
         fps = (#fps >= 2) and fps or nil,
         fpsMin = fmin or 0,
         fpsAvg = (#fps > 0) and (fsum / #fps) or 0,
+        commsIn = cd and cd.commsIn or 0,
+        commsOut = cd and cd.commsOut or 0,
+        commsTop = cd and cd.top or nil,   -- sorted [{ prefix, bytes }]
     }
 end
 
@@ -701,6 +731,9 @@ end
 -- a capture, so the per-fight delta can be computed at the end. Cheap (a handful
 -- of profiler reads per addon, once) — not the memory walk.
 local function SnapshotBaseline(buf)
+    -- Comms baseline (independent of the CPU profiler) so we can report the
+    -- addon traffic that flowed during this session.
+    buf.commsBase = ns.Comms and ns.Comms.Snapshot and ns.Comms.Snapshot() or nil
     if not (ns.Prof and ns.Prof.hasAddOnProfiler) then return end
     local base = {}
     for i = 1, #ns.addons do
@@ -1015,8 +1048,12 @@ boot:RegisterEvent("PLAYER_LOGOUT")
 boot:RegisterEvent("PLAYER_DEAD")
 boot:RegisterEvent("CHALLENGE_MODE_START")
 boot:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        InitDB()
+    if event == "ADDON_LOADED" then
+        if arg1 == addonName then InitDB() end
+        -- Keep the per-addon loaded flag current without polling every tick: an
+        -- addon only ever transitions unloaded -> loaded during a session.
+        local e = ns.byName and ns.byName[arg1]
+        if e then e.loaded = true end
     elseif event == "PLAYER_LOGIN" then
         InitDB()
         ns.API.PruneSessions()                 -- drop sessions past sessionMaxDays
@@ -1088,6 +1125,10 @@ boot:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                         samples = saved.samples or 0,
                         addons  = saved.addons or {},
                     }
+                    -- Re-baseline the spike counts: the reload zeroed the native
+                    -- profiler counters, so capture a fresh baseline for the
+                    -- resumed run (without it, per-fight spike counts stay 0).
+                    SnapshotBaseline(ns.run)
                 else
                     ns.API.BeginRun((GetInstanceInfo and GetInstanceInfo()) or "Instance")
                 end

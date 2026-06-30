@@ -913,6 +913,10 @@ local function Footer(view)
                 ctx = ctx .. ("  •  fps |cffffffff%d|r avg / |cffffffff%d|r min"):format(
                     floor(sess.fpsAvg + 0.5), floor((sess.fpsMin or 0) + 0.5))
             end
+            if (sess.commsIn or 0) + (sess.commsOut or 0) > 0 then
+                ctx = ctx .. ("  •  comms in |cffffffff%s|r out |cffffffff%s|r"):format(
+                    ns.FmtBytes(sess.commsIn), ns.FmtBytes(sess.commsOut))
+            end
             footer:SetText(("ended |cffffffff%s|r%s  •  |cffffffff%d|r addons%s")
                 :format(FmtAgo(sess.ended), ctx, #view, rec))
         elseif ns.fight or ns.run then
@@ -1260,8 +1264,27 @@ local function BuildToolbar()
     })
     sessBtn:SetBackdropColor(0.12, 0.12, 0.15, 0.9)
     sessBtn:SetBackdropBorderColor(0.35, 0.35, 0.4, 1)
-    sessBtn:SetScript("OnEnter", function(self) self:SetBackdropBorderColor(0.5, 0.6, 0.7, 1) end)
-    sessBtn:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(0.35, 0.35, 0.4, 1) end)
+    sessBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropBorderColor(0.5, 0.6, 0.7, 1)
+        local sess = SelectedSession()
+        if sess and sess.commsTop and #sess.commsTop > 0 then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Addon comms this " .. (sess.kind == "run" and "run" or "fight"), 1, 1, 1)
+            GameTooltip:AddDoubleLine("total in / out",
+                ns.FmtBytes(sess.commsIn or 0) .. " / " .. ns.FmtBytes(sess.commsOut or 0),
+                0.7, 0.8, 0.9, 1, 1, 1)
+            GameTooltip:AddLine(" ")
+            for i = 1, #sess.commsTop do
+                local p = sess.commsTop[i]
+                GameTooltip:AddDoubleLine(p.prefix, ns.FmtBytes(p.bytes), 0.8, 0.8, 0.8, 0.9, 0.9, 0.9)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    sessBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropBorderColor(0.35, 0.35, 0.4, 1)
+        GameTooltip:Hide()
+    end)
     local sArrow = sessBtn:CreateTexture(nil, "OVERLAY")
     sArrow:SetSize(10, 10)
     sArrow:SetPoint("RIGHT", -4, 0)
@@ -1764,8 +1787,16 @@ function ns.UI.Init()
         if not ns.db.collapsed then
             ns.db.size.w, ns.db.size.h = self:GetWidth(), self:GetHeight()
         end
-        for i = 1, #rows do rows[i]._laidTab = nil end   -- re-fit name/sparkline to the new width
-        Refresh()
+        -- A grip drag fires this every frame; coalesce the (full) re-layout +
+        -- refresh into at most one per ~0.05s so dragging stays smooth.
+        if not f._resizePending then
+            f._resizePending = true
+            C_Timer.After(0.05, function()
+                f._resizePending = false
+                for i = 1, #rows do rows[i]._laidTab = nil end   -- re-fit to the new width
+                Refresh()
+            end)
+        end
     end)
 
     -- The sampling loop lives on an always-on driver in the core (so recording

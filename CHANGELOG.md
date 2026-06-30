@@ -2,6 +2,26 @@
 
 ## v0.10.0
 
+- **Sessions capture comms.** Each saved fight/run now records the **addon-comms
+  traffic** that flowed during it — the Sessions footer shows the total in / out,
+  and hovering the session selector lists the **top prefixes** by bytes. Captured
+  cheaply from a start/end snapshot, so you can see which addons chattered during
+  a specific pull.
+
+- **Event lane on the graph.** Combat / pull / death markers now appear as
+  distinct shapes in a lane below the plot — triangle (combat start), square
+  (combat end), diamond (pull), ✕ (death) — instead of overlapping vertical
+  lines. Hover the lane for a time-sorted list of every event, so a cluster of
+  markers around the same moment is finally readable. Works on both the live
+  Addons graph and saved sessions.
+
+- **Polish & fixes.** Lower idle cost (the loaded-addon flag is event-driven
+  instead of polled every tick); smoother window resize (the table re-layout is
+  coalesced during a drag); the live graph no longer shows a false spike tick
+  the first time you reopen the window; memory churn is measured against real
+  elapsed time; resumed dungeon runs record their spike counts; and *Reset
+  graph* now clears the spike history too.
+
 - **Sessions now record context.** Each saved fight is tagged with its
   **difficulty** (N / H / M / LFR) and **Kill / Wipe** result; dungeon runs get
   their **Mythic+ key level** (and affixes). Shown in the session dropdown and

@@ -28,9 +28,17 @@ ns.Comms.totalOut = 0
 
 local sort, wipe = table.sort, wipe
 
+-- Rolling history with amortised front-trim (see the same helper in
+-- AddonPulse.lua): overshoot a little, then drop the oldest batch in one pass so
+-- a busy prefix isn't shifting an O(n) array every tick.
 local function Push(hist, v, maxLen)
     hist[#hist + 1] = v
-    while #hist > maxLen do table.remove(hist, 1) end
+    local n = #hist
+    if n > maxLen * 1.125 then
+        local drop = n - maxLen
+        for i = 1, maxLen do hist[i] = hist[i + drop] end
+        for i = maxLen + 1, n do hist[i] = nil end
+    end
 end
 
 -- Normalise the addon-message distribution to a short, friendly label.
@@ -148,6 +156,35 @@ function ns.Comms.Reset()
     ns.Comms.totalIn = 0
     ns.Comms.totalOut = 0
     ns.Comms.SeedRegistered()
+end
+
+-- Snapshot the cumulative comms counters, for a session baseline.
+function ns.Comms.Snapshot()
+    local s = { tin = ns.Comms.totalIn, tout = ns.Comms.totalOut, prefixes = {} }
+    for prefix, e in pairs(byPrefix) do
+        s.prefixes[prefix] = { e.bytesIn, e.bytesOut }
+    end
+    return s
+end
+
+-- Comms that flowed since a snapshot: totals + the top prefixes by bytes.
+function ns.Comms.Delta(snap)
+    if not snap then return nil end
+    local out = {
+        commsIn  = (ns.Comms.totalIn  or 0) - (snap.tin  or 0),
+        commsOut = (ns.Comms.totalOut or 0) - (snap.tout or 0),
+        top = {},
+    }
+    local per = {}
+    for prefix, e in pairs(byPrefix) do
+        local b = snap.prefixes[prefix]
+        local din  = (e.bytesIn  or 0) - (b and b[1] or 0)
+        local dout = (e.bytesOut or 0) - (b and b[2] or 0)
+        if din + dout > 0 then per[#per + 1] = { prefix = prefix, bytes = din + dout } end
+    end
+    sort(per, function(a, b) return a.bytes > b.bytes end)
+    for i = 1, (#per < 6 and #per or 6) do out.top[i] = per[i] end
+    return out
 end
 
 -- Filtered + sorted view for the Comms tab. sortKey: "name" | "in" | "out".

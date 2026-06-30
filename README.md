@@ -60,12 +60,14 @@ Click a row to pin it to the **detail graph**, which plots its history and lists
 its full stat block (peak / session / encounter, spike counts, memory
 peak / avg / churn).
 
-The graph is **annotated**: coloured vertical lines mark **combat start/end**
-(yellow / grey), **boss pulls** (red) and **deaths** (white); **red ticks along
-the top** mark each interval the addon had a **frame over 50 ms** (so you see
-*when* it stuttered, which the averaged line hides); and **hovering** the plot
-shows a crosshair with the exact value (plus the **FPS** at that moment), the
-time at that point, and the nearest event. A faint green **FPS line** is overlaid
+The graph is **annotated**. Events show as distinct shapes in a lane just below
+the plot — a **triangle** for combat start, **square** for combat end, **diamond**
+for a boss pull, and **✕** for a death (each colour-coded too) — with a faint
+guide line up into the chart. **Hover the lane** for a list of every event with
+its time, which keeps a cluster of events around the same moment readable. **Red ticks along the top** mark each interval the addon had
+a **frame over 50 ms** (so you see *when* it stuttered, which the averaged line
+hides), and **hovering** the plot shows a crosshair with the exact value (plus the
+**FPS** at that moment) and the time at that point. A faint green **FPS line** is overlaid
 on the graph, so you can line an addon's CPU spike up against the frame-rate dip.
 Markers are stored with saved sessions too. The strip below the
 graph cycles markers **all → pulls + deaths → off** (to cut clutter on long
@@ -87,7 +89,10 @@ ago it was, and is **searchable** by name (handy for jumping to a specific boss)
 
 Every session also records the **frame rate** over time — the footer shows the
 avg / min, and the graph overlays a faint green **FPS line**, so you can see an
-addon's CPU spike line up with the actual frame-rate dip.
+addon's CPU spike line up with the actual frame-rate dip. It also captures the
+**addon comms** that flowed during the session: the footer shows the total in /
+out, and hovering the session selector lists the **top prefixes** (so you can see
+that a pull moved, say, 2 MB of traffic, mostly from BigWigs).
 
 Each row shows that addon's CPU **peak / average** and memory peak for the
 session, and the tooltip adds how many frames it went over **10 / 50 / 100 ms
