@@ -1,7 +1,13 @@
 # Changelog
 
-## v0.10.0
+## v1.0.0
 
+First public release.
+
+- **Key bindings.** Bind **Toggle the window** and **Pause / resume** under
+  Key Bindings → AddonPulse.
+- **First-run note.** A one-time chat line on first install points you at
+  `/pulse`, the minimap button, and `/pulse options`.
 - **Sessions capture comms.** Each saved fight/run now records the **addon-comms
   traffic** that flowed during it — the Sessions footer shows the total in / out,
   and hovering the session selector lists the **top prefixes** by bytes. Captured

@@ -1063,6 +1063,11 @@ boot:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         if ns.UI and ns.UI.Init then ns.UI.Init() end
         if ns.Options and ns.Options.RegisterBlizzard then ns.Options.RegisterBlizzard() end
         StartDriver()
+        if ns.db and not ns.db.welcomed then   -- one-time hello on first install
+            ns.db.welcomed = true
+            print("|cff52c7e0AddonPulse|r loaded — |cffffd100/pulse|r to open, "
+                .. "left-click the minimap (right-click to pause), |cffffd100/pulse options|r for settings.")
+        end
     elseif event == "PLAYER_REGEN_DISABLED" then
         ns.API.BeginFight()                 -- entered combat
         ns.API.AddMarker("combat", "Combat")
@@ -1189,4 +1194,18 @@ end
 -- window, matching the rest of the suite.
 function AddonPulse_OnAddonCompartmentClick()
     if ns.UI and ns.UI.Toggle then ns.UI.Toggle() end
+end
+
+-- Key bindings (declared in Bindings.xml). The BINDING_* globals are the labels
+-- the Key Bindings UI shows; the functions are what each binding runs.
+BINDING_HEADER_ADDONPULSE = "AddonPulse"
+BINDING_NAME_ADDONPULSE_TOGGLE = "Toggle the window"
+BINDING_NAME_ADDONPULSE_PAUSE = "Pause / resume"
+
+function AddonPulse_ToggleBinding()
+    if ns.UI and ns.UI.Toggle then ns.UI.Toggle() end
+end
+
+function AddonPulse_PauseBinding()
+    if ns.API and ns.API.SetEnabled then ns.API.SetEnabled(not (ns.db and ns.db.enabled)) end
 end

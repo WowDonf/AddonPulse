@@ -77,8 +77,9 @@ A performance monitor has no business being a performance problem:
 
 ## Open and control
 
-- **`/pulse`** (or `/ap`), the **minimap button** (right-click to pause), or the
-  addon-compartment entry opens the window.
+- **`/pulse`** (or `/ap`), the **minimap button** (right-click to pause), the
+  addon-compartment entry, or a **key binding** (Key Bindings → AddonPulse) opens
+  the window.
 - **`/pulse options`**, the title-bar cog, or **Game Menu → Options → AddOns →
   AddonPulse** opens the settings — sample rates, session limits, display units,
   window scale / opacity, and a Reset to Defaults.

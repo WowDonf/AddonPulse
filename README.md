@@ -131,7 +131,8 @@ prefixes registered on your client; outgoing is always counted. Bytes are
 ## Using it
 
 - **Open / close:** `/pulse` (also `/addonpulse`, `/ap`), left-click the minimap
-  button, or the addon-compartment entry under the minimap.
+  button, the addon-compartment entry under the minimap, or a **key binding**
+  (Key Bindings → AddonPulse, where you can also bind pause / resume).
 - **Pause / resume:** the **Active / Paused** button, **right-click** the minimap
   button, or `/pulse off` · `/pulse on`.
 - **Switch tabs:** click **Addons / Sessions / Comms** under the title.

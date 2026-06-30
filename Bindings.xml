@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="ADDONPULSE_TOGGLE" header="ADDONPULSE">
+		AddonPulse_ToggleBinding()
+	</Binding>
+	<Binding name="ADDONPULSE_PAUSE">
+		AddonPulse_PauseBinding()
+	</Binding>
+</Bindings>

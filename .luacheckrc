@@ -31,6 +31,11 @@ globals = {
 	"SlashCmdList",
 	"AddonPulse_OnAddonCompartmentClick",
 	"StaticPopupDialogs",            -- we add one dialog entry
+	"AddonPulse_ToggleBinding",      -- key-binding actions (Bindings.xml)
+	"AddonPulse_PauseBinding",
+	"BINDING_HEADER_ADDONPULSE",     -- key-binding display names
+	"BINDING_NAME_ADDONPULSE_TOGGLE",
+	"BINDING_NAME_ADDONPULSE_PAUSE",
 }
 
 -- The slice of the WoW API this addon reads.
