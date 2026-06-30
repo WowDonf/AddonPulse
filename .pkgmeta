@@ -1,0 +1,42 @@
+# Configuration for the BigWigs packager (CurseForge / Wago / GitHub Releases).
+# Reference: https://github.com/BigWigsMods/packager/wiki
+
+package-as: AddonPulse
+
+# Libraries for the minimap button. These are NOT committed to the repo — the
+# packager fetches each fresh at build time into Libs/, so released zips have
+# them while local dev checkouts don't (the minimap button simply no-ops
+# without them).
+externals:
+  Libs/LibStub:
+    url: https://repos.curseforge.com/wow/libstub/trunk
+    type: svn
+  Libs/CallbackHandler-1.0:
+    url: https://repos.wowace.com/wow/callbackhandler/trunk/CallbackHandler-1.0
+    type: svn
+  Libs/LibDataBroker-1.1:
+    url: https://github.com/tekkub/libdatabroker-1-1.git
+    type: git
+  Libs/LibDBIcon-1.0:
+    url: https://repos.curseforge.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
+    type: svn
+
+# Files and directories that exist in the repo but should NOT ship inside the
+# released zip. Anything not listed gets packaged.
+ignore:
+  - .github
+  - .gitignore
+  - .luacheckrc
+  - assets
+  - tools
+  - CurseForge-description.md
+  - README.md
+  - RELEASING.md
+
+# Source the changelog from CHANGELOG.md (rendered as Markdown on the listings).
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+# Keep a single zip per release (don't generate a separate no-libs zip).
+enable-nolib-creation: no

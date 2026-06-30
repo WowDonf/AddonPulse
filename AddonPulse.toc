@@ -1,0 +1,26 @@
+## Interface: 120007, 120100
+## Title: AddonPulse
+## Notes: Live per-addon CPU & memory monitor — sortable table, history graphs, leak & spike detection, per-fight and per-dungeon session recording, comms tracking, and a minimisable stats bar.
+## Author: WowDonf
+## Version: v0.10.0
+## SavedVariables: AddonPulseDB
+## IconTexture: Interface\AddOns\AddonPulse\Icon.png
+## Category-enUS: AddonPulse
+## AddonCompartmentFunc: AddonPulse_OnAddonCompartmentClick
+
+# Minimap button libraries. These are NOT committed to the repo — the BigWigs
+# packager fetches them into Libs/ at build time (see .pkgmeta). In a raw dev
+# checkout these files are absent, the LibStub lookups in Minimap.lua return
+# nil, and the addon simply runs without a minimap button.
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+AddonPulse.lua
+Profiler.lua
+Comms.lua
+Graph.lua
+UI.lua
+Options.lua
+Minimap.lua

@@ -1,0 +1,27 @@
+AddonPulse
+Copyright (c) 2026 WowDonf. All rights reserved.
+
+All rights reserved. No part of this Software may be reproduced, distributed,
+modified, sublicensed, sold, or transmitted in any form or by any means,
+without the prior written permission of the author.
+
+Personal, non-commercial use of unmodified copies of this Software inside the
+World of Warcraft client, as installed from the official CurseForge, Wago, or
+GitHub Releases distributions of AddonPulse, is permitted.
+
+This license covers only the original code and assets of AddonPulse authored by
+WowDonf. Released distributions also bundle third-party libraries — LibStub,
+CallbackHandler-1.0, LibDataBroker-1.1, and LibDBIcon-1.0 — that are the work of
+their respective authors and remain governed by their own licenses. Nothing in
+this license restricts or overrides the rights granted by those libraries'
+licenses, and their notices are retained in the files as shipped.
+
+Contributions submitted to the project (including pull requests, patches, and
+bug reports containing code) become subject to this license unless otherwise
+agreed in writing.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT
+OF, OR IN CONNECTION WITH THE SOFTWARE.

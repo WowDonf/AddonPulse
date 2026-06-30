@@ -1,0 +1,33 @@
+# BigWigs packager build artifacts
+.release/
+.pkg/
+release/
+*.zip
+
+# Embedded libraries - not committed. The BigWigs packager fetches these
+# fresh from upstream at build time (see externals in .pkgmeta), so the
+# released zip always has them. A local checkout keeps its own copy on
+# disk for in-game testing; it just isn't tracked.
+Libs/
+
+# Python tooling (asset/build scripts under tools/)
+__pycache__/
+*.pyc
+tools/.venv/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Lua bytecode / backups (if you ever run luac locally)
+*.luac
+*.lua.bak
