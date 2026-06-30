@@ -14,7 +14,7 @@ tab.
 
 ## Tabs
 
-AddonPulse has two tabs that share one table:
+AddonPulse has three tabs that share one table:
 
 ### Addons
 
