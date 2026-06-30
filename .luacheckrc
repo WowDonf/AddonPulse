@@ -23,7 +23,8 @@ max_line_length = false
 
 -- Globals the addon legitimately creates / assigns.
 globals = {
-	"AddonPulseDB",                  -- SavedVariables
+	"AddonPulseDB",                  -- SavedVariables (account-wide settings)
+	"AddonPulseCharDB",              -- SavedVariablesPerCharacter (sessions, baseline)
 	"SLASH_ADDONPULSE1",
 	"SLASH_ADDONPULSE2",
 	"SLASH_ADDONPULSE3",
@@ -61,6 +62,8 @@ read_globals = {
 	"IsInInstance",
 	"GetInstanceInfo",
 	"InCombatLockdown",
+	"GetDifficultyInfo",
+	"C_ChallengeMode",
 	"collectgarbage",
 	"wipe",
 	"hooksecurefunc",

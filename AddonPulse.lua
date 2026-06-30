@@ -44,6 +44,7 @@ local CVarGet = (C_CVar and C_CVar.GetCVar) or _G.GetCVar
 local CVarSet = (C_CVar and C_CVar.SetCVar) or _G.SetCVar
 local GetTime = GetTime
 local GetServerTime = GetServerTime
+local GetFramerate = GetFramerate
 
 local format, floor, max = string.format, math.floor, math.max
 local sort, wipe = table.sort, wipe
@@ -64,7 +65,9 @@ local DEFAULTS = {
     maxRuns      = 4,        -- saved dungeon/raid snapshots to keep
     sessionMaxDays = 14,     -- auto-drop saved sessions older than this (0 = never)
     sessionSpikes  = true,   -- capture per-tick >50ms spike timing into sessions
-    sessions     = { fights = {}, runs = {} },   -- persisted capture history
+    -- sessions / baseline / activeRun live in the PER-CHARACTER db (ns.cdb), not
+    -- here: combat captures and the memory baseline are character-specific (addons
+    -- differ per character), while these settings stay shared account-wide.
     cpuPercent   = false,    -- show CPU as % of a frame budget instead of ms
     targetFPS    = 60,       -- frame budget for the % display (1000/fps ms = 100%)
     scale        = 1.0,      -- window scale (0.7 - 1.3)
@@ -426,7 +429,7 @@ function ns.API.Sample(dt)
 
         -- Memory delta vs the captured baseline (nil when there's no baseline for
         -- this addon, so the ΔMem column can show "-" rather than a fake 0).
-        local base = db.baseline and db.baseline.mem
+        local base = ns.cdb and ns.cdb.baseline and ns.cdb.baseline.mem
         local bm = base and base[e.name]
         e.dMem = bm and (mem - bm) or nil
 
@@ -519,6 +522,11 @@ end
 local function RecordInto(buf)
     if not buf then return end
     buf.samples = buf.samples + 1
+    -- Session-level FPS timeline (one point per tick, alongside the per-addon
+    -- series), so you can line an addon's CPU spike up against the frame-rate dip.
+    buf.fps = buf.fps or {}
+    buf.fps[#buf.fps + 1] = (GetFramerate and GetFramerate()) or 0
+    if #buf.fps > FIGHT_CAP then DownsampleHalf(buf.fps) end
     local hasAP = ns.Prof and ns.Prof.hasAddOnProfiler
     buf.prevOver = buf.prevOver or {}
     for i = 1, #ns.addons do
@@ -608,6 +616,16 @@ local function Finalize(buf, kind)
         }
     end
     if #list == 0 then return nil end
+
+    -- Session-level FPS timeline + its min / average.
+    local fps = buf.fps or {}
+    while #fps > cap do DownsampleHalf(fps) end
+    local fmin, fsum = nil, 0
+    for i = 1, #fps do
+        local v = fps[i]; fsum = fsum + v
+        if not fmin or v < fmin then fmin = v end
+    end
+
     return {
         kind = kind,
         name = buf.name or (kind == "run" and "Instance" or "Combat"),
@@ -615,8 +633,25 @@ local function Finalize(buf, kind)
         ended = (GetServerTime and GetServerTime()) or 0,
         list = list,
         markers = buf.markers,   -- event times relative to start; clamped at draw
+        result = buf.result,        -- "kill" | "wipe" | nil
+        difficulty = buf.difficulty, -- short tag: N / H / M / LFR, or "+18" for M+
+        groupSize = buf.groupSize,
+        keyLevel = buf.keyLevel, affixes = buf.affixes,
+        fps = (#fps >= 2) and fps or nil,
+        fpsMin = fmin or 0,
+        fpsAvg = (#fps > 0) and (fsum / #fps) or 0,
     }
 end
+
+-- Short difficulty tag from an ENCOUNTER difficultyID (raid/dungeon).
+local function DifficultyTag(difficultyID)
+    if not difficultyID or difficultyID == 0 then return nil end
+    local name = GetDifficultyInfo and GetDifficultyInfo(difficultyID)
+    if not name then return nil end
+    if name:find("Looking") then return "LFR" end
+    return name:sub(1, 1):upper()   -- Mythic→M, Heroic→H, Normal→N
+end
+ns.DifficultyTag = DifficultyTag
 
 -- Record a timeline event: into the live rolling list and into any active
 -- fight/run (relative to its start). Called from event handlers, never per frame.
@@ -637,13 +672,13 @@ end
 -- Auto-rotate saved sessions: drop any older than db.sessionMaxDays (0 = keep).
 -- Bounds total saved size regardless of how many fights/runs you do.
 function ns.API.PruneSessions()
-    if not (ns.db and ns.db.sessions) then return end
+    if not (ns.cdb and ns.cdb.sessions) then return end
     local days = ns.db.sessionMaxDays or 14
     local now = (GetServerTime and GetServerTime()) or 0
     if days <= 0 or now == 0 then return end
     local cutoff = now - days * 86400
     for _, which in ipairs({ "fights", "runs" }) do
-        local t = ns.db.sessions[which]
+        local t = ns.cdb.sessions[which]
         for i = #t, 1, -1 do
             local en = t[i].ended
             if en and en > 0 and en < cutoff then table.remove(t, i) end
@@ -652,7 +687,7 @@ function ns.API.PruneSessions()
 end
 
 local function PushSession(which, s, maxN)
-    local t = ns.db.sessions[which]
+    local t = ns.cdb.sessions[which]
     table.insert(t, 1, s)
     while #t > maxN do t[#t] = nil end   -- count cap
     ns.API.PruneSessions()               -- age cap
@@ -710,23 +745,24 @@ end
 -- NOT per frame. We store elapsed time (GetTime resets across reload) and the
 -- raw buffers; on the next instance-enter the run resumes from here.
 function ns.API.SaveActiveRun()
+    if not ns.cdb then return end
     if ns.run then
-        ns.db.activeRun = {
+        ns.cdb.activeRun = {
             name    = ns.run.name,
             elapsed = ((GetTime and GetTime()) or 0) - (ns.run.start or 0),
             samples = ns.run.samples or 0,
             addons  = ns.run.addons,
         }
-    elseif ns.db then
-        ns.db.activeRun = nil
+    else
+        ns.cdb.activeRun = nil
     end
 end
 
 -- Remove a stored session (by reference) from whichever list holds it.
 function ns.API.RemoveSession(s)
-    if not (ns.db and ns.db.sessions) then return end
+    if not (ns.cdb and ns.cdb.sessions) then return end
     for _, which in ipairs({ "fights", "runs" }) do
-        local t = ns.db.sessions[which]
+        local t = ns.cdb.sessions[which]
         for i = #t, 1, -1 do
             if t[i] == s then table.remove(t, i) end
         end
@@ -746,6 +782,9 @@ end
 function ns.API.Tick(dt)
     if not ns.db then return end
     local shown = ns.UI and ns.UI.IsShown and ns.UI.IsShown()
+    -- Comms traffic flows through always-on hooks, so roll up its rate / history
+    -- every tick regardless of pause state (cheap; just a loop over prefixes).
+    if ns.Comms and ns.Comms.Sample then ns.Comms.Sample(dt) end
     if ns.db.enabled then
         ns.API.Sample(dt)
         if ns.fight then RecordInto(ns.fight) end
@@ -845,6 +884,26 @@ local function InitDB()
         AddonPulseDB.addonCols = { "mem", "recent", "peak", "session", "encounter" }
     end
     ns.db = AddonPulseDB
+
+    -- Per-character store: sessions, baseline, and the in-progress run. One-time
+    -- migration moves anything left in the old account-wide slots into THIS
+    -- character's store (so the character you're on keeps its recent captures).
+    AddonPulseCharDB = AddonPulseCharDB or {}
+    local cdb = AddonPulseCharDB
+    if AddonPulseDB.sessions and not cdb.sessions then
+        cdb.sessions = AddonPulseDB.sessions
+    end
+    if AddonPulseDB.baseline ~= nil and cdb.baseline == nil then
+        cdb.baseline = AddonPulseDB.baseline
+    end
+    if AddonPulseDB.activeRun ~= nil and cdb.activeRun == nil then
+        cdb.activeRun = AddonPulseDB.activeRun
+    end
+    AddonPulseDB.sessions, AddonPulseDB.baseline, AddonPulseDB.activeRun = nil, nil, nil
+    cdb.sessions = cdb.sessions or { fights = {}, runs = {} }
+    cdb.sessions.fights = cdb.sessions.fights or {}
+    cdb.sessions.runs = cdb.sessions.runs or {}
+    ns.cdb = cdb
 end
 
 ns.inEncounter = false
@@ -896,21 +955,21 @@ function ns.API.SetBaseline()
             e.dMem = 0           -- delta is zero at the instant of capture
         end
     end
-    ns.db.baseline = b
+    ns.cdb.baseline = b
     return b
 end
 
 function ns.API.ClearBaseline()
-    ns.db.baseline = nil
+    ns.cdb.baseline = nil
     for i = 1, #ns.addons do ns.addons[i].dMem = nil end
 end
 
 -- Trim saved sessions down to the current count caps (after lowering them).
 function ns.API.TrimSessions()
-    if not (ns.db and ns.db.sessions) then return end
-    local f = ns.db.sessions.fights
+    if not (ns.cdb and ns.cdb.sessions) then return end
+    local f = ns.cdb.sessions.fights
     while #f > (ns.db.maxFights or 8) do f[#f] = nil end
-    local r = ns.db.sessions.runs
+    local r = ns.cdb.sessions.runs
     while #r > (ns.db.maxRuns or 4) do r[#r] = nil end
 end
 
@@ -951,7 +1010,8 @@ boot:RegisterEvent("PLAYER_REGEN_ENABLED")
 boot:RegisterEvent("PLAYER_ENTERING_WORLD")
 boot:RegisterEvent("PLAYER_LOGOUT")
 boot:RegisterEvent("PLAYER_DEAD")
-boot:SetScript("OnEvent", function(_, event, arg1, arg2)
+boot:RegisterEvent("CHALLENGE_MODE_START")
+boot:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ADDON_LOADED" and arg1 == addonName then
         InitDB()
     elseif event == "PLAYER_LOGIN" then
@@ -974,9 +1034,41 @@ boot:SetScript("OnEvent", function(_, event, arg1, arg2)
         ns.encounterName = arg2
         ns.API.BeginFight()                 -- in case the combat-log event lagged
         ns.API.NameFight(arg2)
+        if ns.fight then
+            ns.fight.difficulty = DifficultyTag(arg3)   -- arg3 = difficultyID
+            ns.fight.groupSize  = arg4                  -- arg4 = groupSize
+        end
         ns.API.AddMarker("pull", arg2 or "Pull")
     elseif event == "ENCOUNTER_END" then
         ns.inEncounter = false
+        if ns.fight then                                -- arg5 = success (1 = kill)
+            ns.fight.result     = (arg5 == 1 or arg5 == true) and "kill" or "wipe"
+            ns.fight.difficulty = ns.fight.difficulty or DifficultyTag(arg3)
+            ns.fight.groupSize  = ns.fight.groupSize or arg4
+        end
+    elseif event == "CHALLENGE_MODE_START" then
+        -- A Mythic+ key just activated; tag the active run with its level / affixes.
+        if ns.run and C_ChallengeMode then
+            local level, affixes = C_ChallengeMode.GetActiveKeystoneInfo()
+            if level and level > 0 then
+                ns.run.keyLevel = level
+                ns.run.difficulty = "+" .. level
+            end
+            local mapID = C_ChallengeMode.GetActiveChallengeMapID
+                and C_ChallengeMode.GetActiveChallengeMapID()
+            if mapID and C_ChallengeMode.GetMapUIInfo then
+                local mapName = C_ChallengeMode.GetMapUIInfo(mapID)
+                if mapName and mapName ~= "" then ns.run.name = mapName end
+            end
+            if affixes and C_ChallengeMode.GetAffixInfo then
+                local names = {}
+                for _, aid in ipairs(affixes) do
+                    local an = C_ChallengeMode.GetAffixInfo(aid)
+                    if an then names[#names + 1] = an end
+                end
+                if #names > 0 then ns.run.affixes = table.concat(names, ", ") end
+            end
+        end
     elseif event == "PLAYER_DEAD" then
         ns.API.AddMarker("death", "Death")
     elseif event == "PLAYER_ENTERING_WORLD" then
@@ -985,7 +1077,7 @@ boot:SetScript("OnEvent", function(_, event, arg1, arg2)
         local inInstance, instanceType = IsInInstance()
         if inInstance and (instanceType == "party" or instanceType == "raid") then
             if not ns.run then
-                local saved = ns.db and ns.db.activeRun
+                local saved = ns.cdb and ns.cdb.activeRun
                 if saved then
                     ns.run = {
                         name    = saved.name,
@@ -997,10 +1089,10 @@ boot:SetScript("OnEvent", function(_, event, arg1, arg2)
                     ns.API.BeginRun((GetInstanceInfo and GetInstanceInfo()) or "Instance")
                 end
             end
-            if ns.db then ns.db.activeRun = nil end
+            if ns.cdb then ns.cdb.activeRun = nil end
         else
             if ns.run then ns.API.EndRun() end
-            if ns.db then ns.db.activeRun = nil end
+            if ns.cdb then ns.cdb.activeRun = nil end
         end
     elseif event == "PLAYER_LOGOUT" then
         ns.API.SaveActiveRun()      -- single write at reload/quit, not per frame

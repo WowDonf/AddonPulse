@@ -35,10 +35,13 @@ a red tick on every frame it stuttered.
 ## Sessions — recorded and reload-proof
 
 AddonPulse keeps sampling **while it's closed or minimised**, and snapshots every
-**fight** (named after the boss) and every **whole dungeon or raid**. Close the
-window before a pull, open it afterward — even after the post-key reload — and
-review the full timeline on the **Sessions** tab. Old sessions rotate out
-automatically so your saved data never balloons.
+**fight** (named after the boss, tagged with difficulty and **Kill / Wipe**) and
+every **whole dungeon or raid** (Mythic+ runs show their **key level**). Each
+session also records the **frame rate** over time, overlaid on the graph, so you
+can see an addon's CPU spike line up with the real FPS dip. Close the window
+before a pull, open it afterward — even after the post-key reload — and review
+the full timeline on the **Sessions** tab. Old sessions rotate out automatically
+so your saved data never balloons.
 
 ## Find a memory leak
 
@@ -49,8 +52,11 @@ don't.
 
 ## Comms
 
-A per-prefix breakdown of addon-message traffic — bytes and messages, in and out
-— so you can see which addons are chattering on the network.
+A per-prefix breakdown of addon-message traffic: total bytes in/out, a live
+**rate** and **peak burst**, and a **traffic graph** over time — so you can see
+exactly *when* an addon floods the network (a raid-join sync storm jumps right
+out) instead of staring at a running total. The tooltip adds a channel breakdown
+(Party / Raid / Guild / Whisper / Instance) and the average message size.
 
 ## Keeps itself cheap
 
@@ -76,4 +82,5 @@ A performance monitor has no business being a performance problem:
 ## Compatibility
 
 WoW Midnight — patch **12.0.7** and **12.1**. Bundles only the standard
-minimap-button libraries; no other dependencies. Settings are account-wide.
+minimap-button libraries; no other dependencies. Settings are account-wide;
+recorded sessions and the memory baseline are saved **per character**.

@@ -2,6 +2,29 @@
 
 ## v0.10.0
 
+- **Sessions now record context.** Each saved fight is tagged with its
+  **difficulty** (N / H / M / LFR) and **Kill / Wipe** result; dungeon runs get
+  their **Mythic+ key level** (and affixes). Shown in the session dropdown and
+  footer, so "Boss X" becomes "Boss X — M · Kill" and a run becomes "+18".
+- **FPS timeline on sessions.** Every session records the **frame rate** over
+  time and its avg / min (in the footer), and the session graph overlays a faint
+  green FPS line — so you can see an addon's CPU spike line up with the actual
+  frame-rate dip.
+
+- **Per-character sessions & baseline.** Recorded fights/runs, the in-progress
+  run, and the memory baseline are now saved **per character** (via
+  `SavedVariablesPerCharacter`) instead of account-wide — your alts load different
+  addons, so their captures and baselines shouldn't mix. Settings (columns,
+  layout, rates, bar) stay shared account-wide. Existing data is migrated to the
+  character you're on at first login.
+
+- **Comms tab gained graphs and depth.** Each prefix now has a **traffic graph**
+  (bytes/sec over time) and a per-row sparkline, **Rate** and **Peak** columns
+  (sortable — burst-happy addons rise to the top), a **channel breakdown** in the
+  tooltip (Party / Raid / Guild / Whisper / Instance), and **average message
+  size** + message rate. Lets you actually see *when* an addon floods the network
+  (e.g. a sync storm on joining a group) instead of just a running total.
+
 - **Appears in the game's options.** AddonPulse now registers under **Game Menu →
   Options → AddOns**, with a panel that summarises the addon and opens the full
   options window / the main window, plus the slash reference — so it's

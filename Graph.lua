@@ -61,7 +61,19 @@ local function HoverUpdate(self)
     self.cross:SetEndPoint("BOTTOMLEFT", self, sx, plot.y0 + plot.h)
     self.cross:Show()
 
-    local vtxt = (plot.metric == "mem") and ns.FmtMem(val) or (ns.FmtCPUDisplay(val) .. ns.CPUUnit())
+    local vtxt
+    if plot.metric == "comms" then vtxt = ns.FmtBytes(val) .. "/s"
+    elseif plot.metric == "mem" then vtxt = ns.FmtMem(val)
+    else vtxt = ns.FmtCPUDisplay(val) .. ns.CPUUnit() end
+
+    -- FPS at this point (session graphs carry a parallel fps series).
+    local ftxt = ""
+    if plot.fps and #plot.fps >= 1 then
+        local fn = #plot.fps
+        local fi = floor(fx * (fn - 1) + 0.5) + 1
+        if fi < 1 then fi = 1 elseif fi > fn then fi = fn end
+        ftxt = ("  |cff8fd98f%d fps|r"):format(floor((plot.fps[fi] or 0) + 0.5))
+    end
     local ttxt
     if plot.isSession then
         local tin = fx * (plot.duration or 0)
@@ -77,8 +89,8 @@ local function HoverUpdate(self)
             if d < best then best = d; near = plot.markers[i].label end
         end
     end
-    self.readout:SetText(("|cffffffff%s|r |cffaaaaaa%s|r%s"):format(
-        vtxt, ttxt, near and ("  |cffffd479" .. near .. "|r") or ""))
+    self.readout:SetText(("|cffffffff%s|r%s |cffaaaaaa%s|r%s"):format(
+        vtxt, ftxt, ttxt, near and ("  |cffffd479" .. near .. "|r") or ""))
 end
 
 -- ---------------------------------------------------------------------------
@@ -131,6 +143,7 @@ function ns.Graph.Create(parent)
     g.lines  = {}   -- pooled series Line objects
     g.mlines = {}   -- pooled marker Line objects
     g.dots   = {}   -- pooled spike-annotation dots
+    g.fps2   = {}   -- pooled FPS-overlay Line objects (sessions)
 
     g:EnableMouse(true)
     g:SetScript("OnEnter", function(self)
@@ -161,13 +174,15 @@ end
 -- Redraw for the given entry. `markers` is an optional array of
 -- { x = 0..1, kind, label } to annotate the timeline.
 -- ---------------------------------------------------------------------------
-function ns.Graph.Draw(entry, markers)
+function ns.Graph.Draw(entry, markers, fps)
     local g = ns.graphFrame
     if not g or not g:IsShown() then return end
 
     local db = ns.db
-    local metric = db.metric
-    local hist = entry and (metric == "mem" and entry.memHist or entry.cpuHist)
+    local comms = entry and entry.isComms
+    local metric = comms and "comms" or db.metric
+    local hist = comms and entry.bytesHist
+              or (entry and (metric == "mem" and entry.memHist or entry.cpuHist))
 
     local w = g:GetWidth()  - INSET * 2
     local h = g:GetHeight() - INSET - TOP_PAD
@@ -183,6 +198,7 @@ function ns.Graph.Draw(entry, markers)
         for i = 1, #g.lines do g.lines[i]:Hide() end
         for i = 1, #g.mlines do g.mlines[i]:Hide() end
         for i = 1, #g.dots do g.dots[i]:Hide() end
+        for i = 1, #g.fps2 do g.fps2[i]:Hide() end
         g.cross:Hide()
     end
 
@@ -195,18 +211,31 @@ function ns.Graph.Draw(entry, markers)
 
     local native = ns.Prof and ns.Prof.hasAddOnProfiler
     local cpuUnit = (ns.db and ns.db.cpuPercent) and "% frame" or "ms/frame"
-    local unit  = (metric == "mem") and "memory"
-                  or (native and ("CPU (" .. cpuUnit .. ")") or "CPU (ms/s)")
-    local r, gr, b = (metric == "mem") and 0.45 or 1.00,
-                     (metric == "mem") and 0.75 or 0.70,
-                     (metric == "mem") and 1.00 or 0.30
-    g.title:SetText(("|cffffffff%s|r  •  %s"):format(entry.name, unit))
+    local unit, r, gr, b
+    if comms then
+        unit = "network (bytes/s)"
+        r, gr, b = 0.40, 0.80, 0.85
+    elseif metric == "mem" then
+        unit = "memory"
+        r, gr, b = 0.45, 0.75, 1.00
+    else
+        unit = native and ("CPU (" .. cpuUnit .. ")") or "CPU (ms/s)"
+        r, gr, b = 1.00, 0.70, 0.30
+    end
+    g.title:SetText(("|cffffffff%s|r  •  %s"):format(entry.name or entry.prefix, unit))
 
-    if entry.isSession then
+    if comms then
         g.stats:SetText(format(
+            "in |cffffffff%s|r · out |cffffffff%s|r · rate |cffffffff%s/s|r · peak |cffffffff%s/s|r",
+            ns.FmtBytes(entry.bytesIn or 0), ns.FmtBytes(entry.bytesOut or 0),
+            ns.FmtBytes(entry.rate or 0), ns.FmtBytes(entry.peakRate or 0)))
+    elseif entry.isSession then
+        local s = format(
             "%s |cffffffff%s|r · cpu peak |cffffffff%s|r avg |cffffffff%s|r%s · mem peak |cffffffff%s|r",
             entry.kind or "fight", FmtDur(entry.sessionDur),
-            ns.FmtCPUDisplay(entry.cpuPeak), ns.FmtCPUDisplay(entry.cpuSession), ns.CPUUnit(), ns.FmtMem(entry.memPeak)))
+            ns.FmtCPUDisplay(entry.cpuPeak), ns.FmtCPUDisplay(entry.cpuSession), ns.CPUUnit(), ns.FmtMem(entry.memPeak))
+        if fps and #fps >= 2 then s = s .. "  ·  |cff8fd98ffps overlay|r" end
+        g.stats:SetText(s)
     elseif native then
         local o50  = ns.Prof.AddOn(entry.name, "over50")    -- not sampled per tick
         local o100 = ns.Prof.AddOn(entry.name, "over100")
@@ -250,7 +279,9 @@ function ns.Graph.Draw(entry, markers)
     end
     local range = (top - base > 0) and (top - base) or 1
 
-    if metric == "mem" and not memVaries then
+    if comms then
+        g.peak:SetText("peak " .. ns.FmtBytes(peak) .. "/s")
+    elseif metric == "mem" and not memVaries then
         g.peak:SetText("steady " .. ns.FmtMem(peak))
     else
         g.peak:SetText("peak " .. ((metric == "mem") and ns.FmtMem(peak)
@@ -303,6 +334,30 @@ function ns.Graph.Draw(entry, markers)
     end
     for i = count + 1, #g.lines do g.lines[i]:Hide() end
 
+    -- FPS overlay (sessions): a faint green line on its own scale, so a frame-rate
+    -- dip lines up under the addon's CPU / memory spike. Drawn on BORDER (behind
+    -- the series); hover stays on the primary; the footer carries the avg / min.
+    local fc = 0
+    if fps and #fps >= 2 then
+        local fn, fmax = #fps, 1
+        for i = 1, fn do if fps[i] > fmax then fmax = fps[i] end end
+        local fscale, fstepX = fmax * 1.10, w / (fn - 1)
+        for i = 1, fn - 1 do
+            fc = fc + 1
+            local ln = g.fps2[fc]
+            if not ln then
+                ln = g:CreateLine(nil, "BORDER")
+                ln:SetThickness(1)
+                g.fps2[fc] = ln
+            end
+            ln:SetColorTexture(0.55, 0.85, 0.55, 0.32)
+            ln:SetStartPoint("BOTTOMLEFT", g, INSET + (i - 1) * fstepX, INSET + (fps[i] / fscale) * h)
+            ln:SetEndPoint("BOTTOMLEFT",   g, INSET + i * fstepX,       INSET + (fps[i + 1] / fscale) * h)
+            ln:Show()
+        end
+    end
+    for k = fc + 1, #g.fps2 do g.fps2[k]:Hide() end
+
     -- Spike annotations: a red tick along the top for each interval in which this
     -- addon had a frame over 50 ms. Live addons use a dense spikeHist (parallel
     -- to the series); saved sessions use a sparse spikes table { index -> count }.
@@ -336,5 +391,6 @@ function ns.Graph.Draw(entry, markers)
         isSession = entry.isSession,
         span = span, duration = entry.sessionDur,
         markers = markers,
+        fps = fps,
     }
 end

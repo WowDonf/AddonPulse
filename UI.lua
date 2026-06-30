@@ -112,6 +112,8 @@ local HDESC_COMMS = {
     name    = "Addon-message prefix — usually identifies the sending addon.",
     ["in"]  = "Bytes received on this prefix (and message count).",
     out     = "Bytes sent on this prefix.",
+    rate    = "Current network traffic for this prefix, bytes per second.",
+    peak    = "Highest bytes-per-second burst seen this session.",
 }
 local function HeaderDesc(tab, key)
     if tab == "fight" then return HDESC_FIGHT[key] end
@@ -129,14 +131,16 @@ local TABCOLS = {
         { key = "avg",  label = "Avg",   w = 50, cpu = true },
     },
     comms = {
-        { key = "in",  label = "In",  w = 80 },
-        { key = "out", label = "Out", w = 80 },
+        { key = "in",   label = "In",   w = 72 },
+        { key = "out",  label = "Out",  w = 72 },
+        { key = "rate", label = "Rate", w = 72 },
+        { key = "peak", label = "Peak", w = 72 },
     },
 }
 local TABDEF = {
     addons = { name = "Addon",  tabLabel = "Addons",    graph = true },
     fight  = { name = "Addon",  tabLabel = "Sessions", graph = true },
-    comms  = { name = "Prefix", tabLabel = "Comms",     graph = false },
+    comms  = { name = "Prefix", tabLabel = "Comms",     graph = true },
 }
 local TAB_ORDER = { "addons", "fight", "comms" }
 
@@ -153,6 +157,7 @@ local filterText = ""
 local commsSort = { key = "out", dir = "desc" }   -- name | in | out
 local fightSort = { key = "peak", dir = "desc" }  -- name | mem | peak | avg
 local fightSelected = nil                          -- addon name pinned on the Sessions tab
+local commsSelected = nil                          -- prefix pinned on the Comms tab
 local selectedSession = nil                        -- the session table shown on the Sessions tab
 local sessionSearch = ""                            -- dropdown filter text
 
@@ -365,7 +370,9 @@ local function DrawSparkline(r, hist)
     if mx <= 0 then mx = 1 end
     -- Colour to match the detail graph's current series.
     local cr, cg, cb
-    if ns.db.metric == "mem" then cr, cg, cb = 0.45, 0.75, 1.0 else cr, cg, cb = 1.0, 0.70, 0.30 end
+    if r.entry and r.entry.isComms then cr, cg, cb = 0.40, 0.80, 0.85       -- comms = teal
+    elseif ns.db.metric == "mem" then cr, cg, cb = 0.45, 0.75, 1.0          -- memory = blue
+    else cr, cg, cb = 1.0, 0.70, 0.30 end                                  -- cpu = orange
     local stepX = (pts > 1) and (w / (pts - 1)) or 0
     local seg = 0
     for i = startI, n - 1 do
@@ -382,12 +389,6 @@ local function DrawSparkline(r, hist)
         ln:Show()
     end
     for i = seg + 1, #sp.lines do sp.lines[i]:Hide() end
-end
-
-local function HideSparkline(r)
-    if r.spark.lines then
-        for i = 1, #r.spark.lines do r.spark.lines[i]:Hide() end
-    end
 end
 
 -- Re-anchor a row's columns / sparkline / name for the given tab (once per tab).
@@ -418,7 +419,7 @@ local function LayoutCols(r, tab)
     if rowW <= 1 then rowW = (scroll and scroll:GetWidth()) or 542 end
     local avail = rowW - room - NAME_X - 8                    -- usable px left of col 1
     if avail < 1 then avail = 1 end
-    local hasSpark = (tab == "addons" or tab == "fight") and avail >= (NAME_MIN + 4 + SPARK_W)
+    local hasSpark = (tab == "addons" or tab == "fight" or tab == "comms") and avail >= (NAME_MIN + 4 + SPARK_W)
     r.name:ClearAllPoints()
     r.name:SetPoint("LEFT", r, "LEFT", NAME_X, 0)
     r.spark:ClearAllPoints()
@@ -489,6 +490,26 @@ local function RowTooltip(self)
         GameTooltip:AddLine(" ")
         GameTooltip:AddDoubleLine("Received", ns.FmtBytes(e.bytesIn) .. "  (" .. e.msgsIn .. " msgs)", 0.8, 0.8, 0.8, 1, 1, 1)
         GameTooltip:AddDoubleLine("Sent", ns.FmtBytes(e.bytesOut) .. "  (" .. e.msgsOut .. " msgs)", 0.8, 0.8, 0.8, 1, 1, 1)
+        local msgs = (e.msgsIn or 0) + (e.msgsOut or 0)
+        local bytes = (e.bytesIn or 0) + (e.bytesOut or 0)
+        if msgs > 0 then
+            GameTooltip:AddDoubleLine("  avg message", ("%.0f B"):format(bytes / msgs), 0.6, 0.6, 0.6, 0.9, 0.9, 0.9)
+        end
+        GameTooltip:AddDoubleLine("Rate / peak", ns.FmtBytes(e.rate or 0) .. "/s  ·  " .. ns.FmtBytes(e.peakRate or 0) .. "/s", 0.8, 0.8, 0.8, 1, 1, 1)
+        if (e.msgRate or 0) > 0 then
+            GameTooltip:AddDoubleLine("  messages/s", ("%.1f"):format(e.msgRate), 0.6, 0.6, 0.6, 0.9, 0.9, 0.9)
+        end
+        if e.chan and next(e.chan) then
+            local parts = {}
+            for label, b in pairs(e.chan) do parts[#parts + 1] = { label, b } end
+            table.sort(parts, function(x, y) return x[2] > y[2] end)
+            local s = {}
+            for i = 1, #parts do s[#s + 1] = parts[i][1] .. " " .. ns.FmtBytes(parts[i][2]) end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Channels: " .. table.concat(s, "  ·  "), 0.7, 0.82, 0.92, true)
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Click to graph this prefix's traffic.", 0.4, 0.8, 1)
     end
     GameTooltip:Show()
 end
@@ -571,6 +592,9 @@ local function MakeRow(i)
         elseif ns.db.tab == "fight" then
             fightSelected = self.entry.name
             Refresh()
+        elseif ns.db.tab == "comms" then
+            commsSelected = self.entry.prefix
+            Refresh()
         end
     end)
 
@@ -649,11 +673,13 @@ local function FillComms(r, e)
     r.entry = e
     r.flagLeak:Hide(); r.flagSpike:Hide(); r.pin:Hide(); r:SetAlpha(1)
     r.name:SetText(e.prefix)
-    r.cols[1]:SetText(ns.FmtBytes(e.bytesIn));  r.cols[1]:SetTextColor(0.55, 0.85, 0.95)
-    r.cols[2]:SetText(ns.FmtBytes(e.bytesOut)); r.cols[2]:SetTextColor(0.95, 0.80, 0.55)
-    HideSparkline(r)
+    r.cols[1]:SetText(ns.FmtBytes(e.bytesIn));   r.cols[1]:SetTextColor(0.55, 0.85, 0.95)
+    r.cols[2]:SetText(ns.FmtBytes(e.bytesOut));  r.cols[2]:SetTextColor(0.95, 0.80, 0.55)
+    r.cols[3]:SetText(ns.FmtBytes(e.rate or 0) .. "/s");      r.cols[3]:SetTextColor(0.70, 0.85, 0.78)
+    r.cols[4]:SetText(ns.FmtBytes(e.peakRate or 0) .. "/s");  r.cols[4]:SetTextColor(0.85, 0.78, 0.60)
+    DrawSparkline(r, e.bytesHist)
     r.bar:Hide()
-    r.sel:Hide()
+    r.sel:SetShown(e.prefix == commsSelected)
 end
 
 local function FillFight(r, e)
@@ -672,7 +698,7 @@ end
 -- All saved sessions (fights + runs), newest first.
 local function AllSessions()
     local out = {}
-    local s = ns.db and ns.db.sessions
+    local s = ns.cdb and ns.cdb.sessions
     if s then
         for i = 1, #s.fights do out[#out + 1] = s.fights[i] end
         for i = 1, #s.runs do out[#out + 1] = s.runs[i] end
@@ -722,6 +748,16 @@ local function SessKindColor(s)
     return (s and s.kind == "run") and "|cff8be0ff" or "|cffffd479"   -- run / fight
 end
 
+-- Difficulty + kill/wipe suffix for a session label (e.g. "  M · Kill", "  +18").
+local function SessTag(s)
+    if not s then return "" end
+    local t = ""
+    if s.difficulty and s.difficulty ~= "" then t = t .. "  |cffb0b0b0" .. s.difficulty .. "|r" end
+    if s.result == "kill" then t = t .. "  |cff46c846Kill|r"
+    elseif s.result == "wipe" then t = t .. "  |cffe06464Wipe|r" end
+    return t
+end
+
 -- Update the dropdown button text to the current selection.
 local function UpdateSessionButton()
     if not sessBtn then return end
@@ -730,8 +766,8 @@ local function UpdateSessionButton()
         sessBtn.text:SetText("|cffaaaaaano saved sessions yet|r")
         return
     end
-    sessBtn.text:SetText(("%s%s|r  |cffaaaaaa%s|r"):format(
-        SessKindColor(sess), sess.name or "?", FmtDuration(sess.duration)))
+    sessBtn.text:SetText(("%s%s|r%s  |cffaaaaaa%s|r"):format(
+        SessKindColor(sess), sess.name or "?", SessTag(sess), FmtDuration(sess.duration)))
 end
 
 local function SetSessionSelection(sess)
@@ -782,7 +818,7 @@ local function RebuildSessionMenu()
         local r = sessMenu.rows[i] or MakeSessRow(i)
         local s = list[i]
         r.session = s
-        r.name:SetText(SessKindColor(s) .. (s.name or "Combat") .. "|r")
+        r.name:SetText(SessKindColor(s) .. (s.name or "Combat") .. "|r" .. SessTag(s))
         r.info:SetText(("%s · %s"):format(FmtDuration(s.duration), FmtAgo(s.ended)))
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", 2, TOPY - (i - 1) * 18)
@@ -867,8 +903,18 @@ local function Footer(view)
         local rec = (ns.fight or ns.run) and "  •  |cffffd100recording…|r" or ""
         local sess = SelectedSession()
         if sess then
-            footer:SetText(("ended |cffffffff%s|r  •  |cffffffff%d|r addons  •  click a row to graph%s")
-                :format(FmtAgo(sess.ended), #view, rec))
+            local ctx = ""
+            if sess.difficulty then ctx = ctx .. "  •  |cffffffff" .. sess.difficulty .. "|r" end
+            if sess.result then
+                ctx = ctx .. (sess.result == "kill" and "  •  |cff46c846kill|r" or "  •  |cffe06464wipe|r")
+            end
+            if (sess.groupSize or 0) > 0 then ctx = ctx .. ("  •  |cffffffff%d|r ppl"):format(sess.groupSize) end
+            if sess.fpsAvg and sess.fpsAvg > 0 then
+                ctx = ctx .. ("  •  fps |cffffffff%d|r avg / |cffffffff%d|r min"):format(
+                    floor(sess.fpsAvg + 0.5), floor((sess.fpsMin or 0) + 0.5))
+            end
+            footer:SetText(("ended |cffffffff%s|r%s  •  |cffffffff%d|r addons%s")
+                :format(FmtAgo(sess.ended), ctx, #view, rec))
         elseif ns.fight or ns.run then
             footer:SetText("|cffffd100Recording now…|r it'll appear here when it ends.")
         else
@@ -938,9 +984,10 @@ function Refresh()
         else
             graphRow.timespan:SetText("Last " .. FmtSpan(ns.db.history * ns.db.interval))
         end
-        local sel, markers
+        local sel, markers, fpsSeries
         if tab == "fight" then
             local sess = SelectedSession()
+            fpsSeries = sess and sess.fps          -- overlay the session's FPS line
             if sess and fightSelected then
                 for i = 1, #sess.list do
                     if sess.list[i].name == fightSelected then sel = sess.list[i]; break end
@@ -956,6 +1003,9 @@ function Refresh()
                     end
                 end
             end
+        elseif tab == "comms" then
+            sel = commsSelected and ns.Comms.byPrefix[commsSelected] or nil
+            -- no combat markers on the comms graph
         else
             sel = ns.db.selected and ns.byName[ns.db.selected] or nil
             if sel and ns.markers and #ns.markers > 0 and ns.db.markerMode ~= "off" then
@@ -975,7 +1025,7 @@ function Refresh()
                 end
             end
         end
-        ns.Graph.Draw(sel, markers)
+        ns.Graph.Draw(sel, markers, fpsSeries)
     end
 end
 ns.UI.Refresh = Refresh
@@ -995,7 +1045,7 @@ local function ApplyTabVisibility()
     if not addons then toolsMenu:Hide() end
     sessBtn:SetShown(sessions)
     if not sessions then sessMenu:Hide() end
-    metricBtn:SetShown(graphTab)
+    metricBtn:SetShown(graphTab and tab ~= "comms")   -- comms graph is always bytes
     graphBtn:SetShown(graphTab)
     enableBtn:Show()   -- master enable/disable, relevant on every tab
     resetBtn:Show()
@@ -1353,7 +1403,7 @@ local function BuildToolbar()
 
     -- Refresh the baseline action labels / age before the menu shows.
     function RebuildToolsMenu()
-        local b = db.baseline
+        local b = ns.cdb and ns.cdb.baseline
         toolsMenu.setAct.text:SetText(b and "Update baseline now" or "Set baseline now")
         toolsMenu.clearAct.text:SetText("Clear baseline")
         toolsMenu.clearAct:SetEnabled(b and true or false)

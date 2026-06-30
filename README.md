@@ -46,8 +46,8 @@ as % of frame** to read them as a percentage of one frame's budget instead.
 baseline**: click *Set baseline* to snapshot every addon's memory, and the
 **dMem** column then shows how much each has grown or shrunk since — ideal for
 catching a leak over a long session. Tools → **Show ignored** brings ignored rows
-back (dimmed) so you can un-ignore them. Pin/ignore lists and the baseline persist
-across reloads.
+back (dimmed) so you can un-ignore them. The baseline is **per character** (your
+alts load different addons), while pin/ignore lists are shared account-wide.
 
 **Status dots** (left of the name):
 
@@ -77,16 +77,23 @@ at the top (newest first) — it shows each session's name, duration and how lon
 ago it was, and is **searchable** by name (handy for jumping to a specific boss):
 
 - A **fight** is one combat segment — named after the boss when there was an
-  encounter, otherwise "Combat".
+  encounter, otherwise "Combat". Boss fights are tagged with their **difficulty**
+  (N / H / M / LFR) and **Kill / Wipe** result.
 - A **run** is one whole dungeon or raid, recorded from the moment you zone in
-  until you leave — trash and bosses together.
+  until you leave — trash and bosses together. Mythic+ runs show their **key
+  level** (and affixes).
+
+Every session also records the **frame rate** over time — the footer shows the
+avg / min, and the graph overlays a faint green **FPS line**, so you can see an
+addon's CPU spike line up with the actual frame-rate dip.
 
 Each row shows that addon's CPU **peak / average** and memory peak for the
 session, and the tooltip adds how many frames it went over **10 / 50 / 100 ms
 during that fight**; click a row to graph its full timeline. **Clear** removes
 the shown snapshot.
 
-Sessions are **saved across reloads and logouts**, so the reload after a raid or
+Sessions are **saved across reloads and logouts** and are **per character** (a
+fight on your warrior won't mix with your mage's), so the reload after a raid or
 M+ keeps them. The addon keeps the last 8 fights and 4 runs (and auto-drops any
 older than `sessionMaxDays`, default 14, so the file can't grow forever). Within
 each it keeps the addons that were notable (any real CPU, or ≥3 MB) — up to 40 —
@@ -96,10 +103,17 @@ instance**, so reloading mid-key doesn't lose it.
 
 ### Comms
 
-Per-prefix addon-message traffic: **bytes and messages, in and out**, captured
-from `SendAddonMessage` and `CHAT_MSG_ADDON`. Prefixes almost always identify
-the sending addon. (Incoming is only visible for prefixes registered on your
-client; outgoing is always counted.)
+Per-prefix addon-message traffic, captured from `SendAddonMessage` and
+`CHAT_MSG_ADDON`. Columns: **In / Out** (total bytes), **Rate** (current
+bytes/sec) and **Peak** (the burstiest second this session) — so a sync storm
+floats to the top when you sort by Peak. Click a row for a **traffic graph**
+(bytes/sec over time) with a sparkline on every row, and hover for a **channel
+breakdown** (Party / Raid / Guild / Whisper / Instance), the **average message
+size**, and the message rate.
+
+Prefixes almost always identify the sending addon. (Incoming is only visible for
+prefixes registered on your client; outgoing is always counted. Bytes are
+`#prefix + #message` — a close stand-in for what goes on the wire.)
 
 ## Using it
 

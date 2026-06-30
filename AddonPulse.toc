@@ -4,6 +4,7 @@
 ## Author: WowDonf
 ## Version: v0.10.0
 ## SavedVariables: AddonPulseDB
+## SavedVariablesPerCharacter: AddonPulseCharDB
 ## IconTexture: Interface\AddOns\AddonPulse\Icon.png
 ## Category-enUS: AddonPulse
 ## AddonCompartmentFunc: AddonPulse_OnAddonCompartmentClick
