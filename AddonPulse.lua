@@ -1196,9 +1196,9 @@ function AddonPulse_OnAddonCompartmentClick()
     if ns.UI and ns.UI.Toggle then ns.UI.Toggle() end
 end
 
--- Key bindings (declared in Bindings.xml). The BINDING_* globals are the labels
--- the Key Bindings UI shows; the functions are what each binding runs.
-BINDING_HEADER_ADDONPULSE = "AddonPulse"
+-- Key bindings (declared in Bindings.xml; grouped under the "AddonPulse" category
+-- via the category attribute). The BINDING_NAME_* globals are the row labels the
+-- Key Bindings UI shows; the functions are what each binding runs.
 BINDING_NAME_ADDONPULSE_TOGGLE = "Toggle the window"
 BINDING_NAME_ADDONPULSE_PAUSE = "Pause / resume"
 
